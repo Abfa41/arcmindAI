@@ -3,9 +3,8 @@
 import { useGenerateSystem } from "../hooks/useGenerateSystem";
 import { useHistory } from "@/lib/contexts/HistoryContext";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import MermaidDiagram from "./mermaidDiagram";
 import CopyDiagramButton from "./CopyDiagramButton";
@@ -16,6 +15,7 @@ import EntitiesSection from "./EntitiesSection";
 import ApiRoutesSection from "./ApiRoutesSection";
 import DatabaseSchemaSection from "./DatabaseSchemaSection";
 import InfrastructureSection from "./InfrastructureSection";
+import { StarterTemplates } from "@/components/prompt";
 import Lottie from "lottie-react";
 import animationData from "@/components/loaderLottie.json";
 
@@ -26,11 +26,51 @@ export default function GeneratePage() {
     isLoading,
     error: generateError,
   } = useGenerateSystem(refetch);
-  const { register, watch } = useForm();
+  const { register, watch, setValue } = useForm();
   const [error, setError] = useState<string | null>(null);
   const [generatedData, setGeneratedData] = useState<ArchitectureData | null>(
     null,
   );
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const userInput = watch("userInput", "");
+
+  // Auto-expand textarea height
+  useEffect(() => {
+    if (textareaRef.current) {
+      // Reset height to auto to get correct scrollHeight
+      textareaRef.current.style.height = "auto";
+      // Set height based on scrollHeight but respect max-height
+      const newHeight = Math.min(textareaRef.current.scrollHeight, 300);
+      textareaRef.current.style.height = `${newHeight}px`;
+    }
+  }, [userInput]);
+
+  const registerField = register("userInput");
+
+  // Combine refs - forward react-hook-form ref to our custom ref
+  const handleRef = (el: HTMLTextAreaElement | null) => {
+    textareaRef.current = el;
+    if (registerField.ref) {
+      if (typeof registerField.ref === "function") {
+        registerField.ref(el);
+      } else if ("current" in registerField.ref) {
+        (
+          registerField.ref as React.MutableRefObject<HTMLTextAreaElement | null>
+        ).current = el;
+      }
+    }
+  };
+
+  const { ref, ...restRegisterField } = registerField;
+
+  const MAX_INPUT_LENGTH = 2000;
+
+  const handleSelectTemplate = (templateBody: string) => {
+    // Always replace with the new template, respecting MAX_INPUT_LENGTH
+    const truncatedTemplate = templateBody.substring(0, MAX_INPUT_LENGTH);
+    setValue("userInput", truncatedTemplate);
+  };
 
   const handleGenerate = async () => {
     const result = await generate(userInput);
@@ -131,9 +171,6 @@ export default function GeneratePage() {
     }
   };
 
-  const userInput = watch("userInput", "");
-
-  const MAX_INPUT_LENGTH = 2000;
   const counterColor =
     userInput.length === MAX_INPUT_LENGTH
       ? "text-red-500 font-bold"
@@ -148,11 +185,18 @@ export default function GeneratePage() {
       <div className="flex gap-4 items-start">
         {/* Input + counter wrapper */}
         <div className="flex-1">
-          <Input
+          <textarea
+            ref={handleRef}
             placeholder="Enter your system architecture prompt..."
-            {...register("userInput")}
+            {...restRegisterField}
             maxLength={MAX_INPUT_LENGTH}
-            className="flex-1"
+            className="w-full px-3 py-2 border border-input bg-background text-base rounded-md resize-none"
+            style={{
+              minHeight: "40px",
+              maxHeight: "300px",
+              overflow: "auto",
+              height: "auto",
+            }}
           />
 
           <div className="flex justify-end mt-1 mr-3">
@@ -174,6 +218,14 @@ export default function GeneratePage() {
           {isLoading ? "Generating..." : "Generate System"}
         </Button>
       </div>
+
+      {/* Show starter templates only before generation */}
+      {!generatedData && (
+        <StarterTemplates
+          onSelectTemplate={handleSelectTemplate}
+          isVisible={true}
+        />
+      )}
 
       {error && (
         <Card className="border-red-200 bg-red-50">
