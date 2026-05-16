@@ -15,6 +15,7 @@ import EntitiesSection from "./EntitiesSection";
 import ApiRoutesSection from "./ApiRoutesSection";
 import DatabaseSchemaSection from "./DatabaseSchemaSection";
 import InfrastructureSection from "./InfrastructureSection";
+import { StarterTemplates } from "@/components/prompt";
 import Lottie from "lottie-react";
 import animationData from "@/components/loaderLottie.json";
 
@@ -30,6 +31,18 @@ export default function GeneratePage() {
   const [generatedData, setGeneratedData] = useState<ArchitectureData | null>(
     null,
   );
+
+  const handleSelectTemplate = (templateBody: string) => {
+    if (userInput.trim()) {
+      // If there's existing content, append with separator
+      setUserInput(
+        userInput.trim() + "\n\n" + "-".repeat(16) + "\n\n" + templateBody,
+      );
+    } else {
+      // If empty, just insert directly
+      setUserInput(templateBody);
+    }
+  };
 
   const handleGenerate = async () => {
     const result = await generate(userInput);
@@ -132,12 +145,12 @@ export default function GeneratePage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex gap-4 items-center">
+      <div className="flex gap-4 items-center flex-wrap">
         <Input
           placeholder="Enter your system architecture prompt..."
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
-          className="flex-1"
+          className="flex-1 min-w-[200px]"
         />
         <Button
           onClick={handleGenerate}
@@ -146,6 +159,14 @@ export default function GeneratePage() {
           {isLoading ? "Generating..." : "Generate System"}
         </Button>
       </div>
+
+      {/* Show starter templates only before generation */}
+      {!generatedData && (
+        <StarterTemplates
+          onSelectTemplate={handleSelectTemplate}
+          isVisible={true}
+        />
+      )}
 
       {error && (
         <Card className="border-red-200 bg-red-50">
