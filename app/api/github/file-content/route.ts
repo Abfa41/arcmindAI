@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     const owner = searchParams.get("owner");
     const repo = searchParams.get("repo");
     const path = searchParams.get("path");
+    const branch = searchParams.get("branch");
 
     if (!owner || !repo || !path) {
       return NextResponse.json(
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
               Authorization: `Bearer ${githubToken}`,
               Accept: "application/vnd.github.raw",
             },
+            params: branch ? { ref: branch } : undefined,
             responseType: isImage ? "arraybuffer" : "text",
           },
         );
