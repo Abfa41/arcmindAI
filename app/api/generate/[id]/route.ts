@@ -1,3 +1,4 @@
+import { nanoid } from "nanoid";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -444,5 +445,36 @@ User feedback/input for update: ${userInput}`),
       { success: false, message: "Internal server error" },
       { status: 500 },
     );
+  }
+}
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+
+    const updatedGeneration = await db.generation.update({
+      where: {
+        id: params.id,
+      },
+
+      data: {
+        isPublic: true,
+        shareId: nanoid(10),
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      shareId: updatedGeneration.shareId,
+    });
+
+  } catch (error) {
+
+    return NextResponse.json(
+      { error: "Failed to share generation" },
+      { status: 500 }
+    );
+
   }
 }

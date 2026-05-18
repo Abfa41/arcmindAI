@@ -122,17 +122,26 @@ export default function GenerationPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!id || typeof id !== "string") return;
-    const result = await deleteGeneration(id);
-    if (result && result.success) {
-      await refetch();
-      router.push(DOC_ROUTES.GENERATE);
-    } else {
-      console.error("Failed to delete generation:", deleteError);
+  const handleShare = async () => {
+  if (!id || typeof id !== "string") return;
+
+  try {
+
+    const response = await fetch(`/api/generate/${id}`, {
+      method: "PATCH",
+    });
+    const data = await response.json();
+    if (data.success) {
+      const shareUrl =
+        `${window.location.origin}/api/share/${data.shareId}`;
+      await navigator.clipboard.writeText(shareUrl);
+      alert("Share link copied!");
     }
-    setIsDeleteDialogOpen(false);
-  };
+  } catch (error) {
+    console.error("Share failed:", error);
+  }
+
+};
 
   if (isLoading) {
     return (
@@ -238,6 +247,10 @@ export default function GenerationPage() {
     generatedData["Architecture Diagram"],
   );
 
+  function handleDelete(): void {
+    throw new Error("Function not implemented.");
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
       <ActionDialog
@@ -323,6 +336,12 @@ export default function GenerationPage() {
             >
               <Code2 className="mr-2 h-4 w-4 text-muted-foreground" />
               Task Generation
+            </Button>
+            <Button
+              variant="outline"
+              className="h-10 px-6 rounded-xl border-border/60 hover:border-border bg-card/50 transition-all duration-300"
+            >
+             Share
             </Button>
             <DeleteDialog
               open={isDeleteDialogOpen}
