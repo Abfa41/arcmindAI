@@ -138,92 +138,113 @@ const generatePDF = async (options: PDFExportOptions): Promise<void> => {
   yPosition += 10;
 
   // === MICROSERVICES SECTION ===
-  addSectionTitle("Microservices");
-  data.microservices.forEach((service) => {
-    addText(`Service: ${service.name}`, NORMAL_FONT_SIZE, true);
-    addText(`Responsibility: ${service.responsibility}`);
-    addText(`Tech Stack: ${service.techStack.join(", ")}`);
-    addText(`Workflow: ${service.details.workflow}`);
-    if (service.details.inputs.length > 0) {
-      addText(`Inputs: ${service.details.inputs.join(", ")}`);
-    }
-    if (service.details.outputs.length > 0) {
-      addText(`Outputs: ${service.details.outputs.join(", ")}`);
-    }
-    yPosition += 5;
-  });
+  if (data.microservices && data.microservices.length > 0) {
+    addSectionTitle("Microservices");
+    data.microservices.forEach((service) => {
+      addText(`Service: ${service.name}`, NORMAL_FONT_SIZE, true);
+      addText(`Responsibility: ${service.responsibility}`);
+      addText(`Tech Stack: ${service.techStack.join(", ")}`);
+      addText(`Workflow: ${service.details.workflow}`);
+      if (service.details.inputs.length > 0) {
+        addText(`Inputs: ${service.details.inputs.join(", ")}`);
+      }
+      if (service.details.outputs.length > 0) {
+        addText(`Outputs: ${service.details.outputs.join(", ")}`);
+      }
+      yPosition += 5;
+    });
+  }
 
   // === CORE ENTITIES SECTION ===
-  addSectionTitle("Core Entities");
-  data.entities.forEach((entity) => {
-    addText(`Entity: ${entity.name}`, NORMAL_FONT_SIZE, true);
+  if (data.entities && data.entities.length > 0) {
+    addSectionTitle("Core Entities");
+    data.entities.forEach((entity) => {
+      addText(`Entity: ${entity.name}`, NORMAL_FONT_SIZE, true);
 
-    if (Object.keys(entity.fields).length > 0) {
-      addText("Fields:", SMALL_FONT_SIZE, true);
-      Object.entries(entity.fields).forEach(([fieldName, fieldType]) => {
-        addText(`  • ${fieldName}: ${fieldType}`, SMALL_FONT_SIZE);
-      });
-    }
+      if (entity.fields && Object.keys(entity.fields).length > 0) {
+        addText("Fields:", SMALL_FONT_SIZE, true);
+        Object.entries(entity.fields).forEach(([fieldName, fieldType]) => {
+          addText(`  • ${fieldName}: ${fieldType}`, SMALL_FONT_SIZE);
+        });
+      }
 
-    if (Object.keys(entity.relations).length > 0) {
-      addText("Relations:", SMALL_FONT_SIZE, true);
-      Object.entries(entity.relations).forEach(([relName, relType]) => {
-        addText(`  • ${relName}: ${relType}`, SMALL_FONT_SIZE);
-      });
-    }
+      if (entity.relations && Object.keys(entity.relations).length > 0) {
+        addText("Relations:", SMALL_FONT_SIZE, true);
+        Object.entries(entity.relations).forEach(([relName, relType]) => {
+          addText(`  • ${relName}: ${relType}`, SMALL_FONT_SIZE);
+        });
+      }
 
-    yPosition += 5;
-  });
+      yPosition += 5;
+    });
+  }
 
   // === API ROUTES SECTION ===
-  addSectionTitle("API Infrastructure");
-  data.apiRoutes.forEach((routeGroup) => {
-    addText(`Service: ${routeGroup.service}`, NORMAL_FONT_SIZE, true);
+  if (data.apiRoutes && data.apiRoutes.length > 0) {
+    addSectionTitle("API Infrastructure");
+    data.apiRoutes.forEach((routeGroup) => {
+      addText(`Service: ${routeGroup.service}`, NORMAL_FONT_SIZE, true);
 
-    routeGroup.routes.forEach((route) => {
-      addText(`${route.method} ${route.path}`, SMALL_FONT_SIZE, true);
-      addText(`Description: ${route.description}`, SMALL_FONT_SIZE);
-      yPosition += 2;
+      routeGroup.routes.forEach((route) => {
+        addText(`${route.method} ${route.path}`, SMALL_FONT_SIZE, true);
+        addText(`Description: ${route.description}`, SMALL_FONT_SIZE);
+        yPosition += 2;
+      });
+
+      yPosition += 5;
     });
-
-    yPosition += 5;
-  });
+  }
 
   // === DATABASE SCHEMA SECTION ===
-  addSectionTitle("Database Architecture");
-  addText(`Database Type: ${data.databaseSchema.type}`, NORMAL_FONT_SIZE, true);
-  yPosition += 3;
+  if (
+    data.databaseSchema &&
+    data.databaseSchema.collections &&
+    data.databaseSchema.collections.length > 0
+  ) {
+    addSectionTitle("Database Architecture");
+    addText(
+      `Database Type: ${data.databaseSchema.type}`,
+      NORMAL_FONT_SIZE,
+      true,
+    );
+    yPosition += 3;
 
-  data.databaseSchema.collections.forEach((collection) => {
-    addText(`Collection: ${collection.name}`, NORMAL_FONT_SIZE, true);
+    data.databaseSchema.collections.forEach((collection) => {
+      addText(`Collection: ${collection.name}`, NORMAL_FONT_SIZE, true);
 
-    if (Object.keys(collection.fields).length > 0) {
-      const headers = ["Field", "Type"];
-      const rows = Object.entries(collection.fields).map(([name, type]) => [
-        name,
-        type,
-      ]);
-      addTable(headers, rows, [CONTENT_WIDTH * 0.4, CONTENT_WIDTH * 0.6]);
-    }
+      if (collection.fields && Object.keys(collection.fields).length > 0) {
+        const headers = ["Field", "Type"];
+        const rows = Object.entries(collection.fields).map(([name, type]) => [
+          name,
+          type,
+        ]);
+        addTable(headers, rows, [CONTENT_WIDTH * 0.4, CONTENT_WIDTH * 0.6]);
+      }
 
-    yPosition += 5;
-  });
+      yPosition += 5;
+    });
+  }
 
   // === INFRASTRUCTURE SECTION ===
-  addSectionTitle("Deployment & Infrastructure");
+  if (
+    data.infrastructure &&
+    Object.values(data.infrastructure).some((v) => v !== "N/A")
+  ) {
+    addSectionTitle("Deployment & Infrastructure");
 
-  const infraHeaders = ["Component", "Details"];
-  const infraRows: (string | number)[][] = [
-    ["Hosting", data.infrastructure.hosting],
-    ["Database", data.infrastructure.database],
-    ["Authentication", data.infrastructure.auth],
-    ["CDN", data.infrastructure.cdn],
-    ["Scaling", data.infrastructure.scaling],
-  ];
-  addTable(infraHeaders, infraRows, [
-    CONTENT_WIDTH * 0.35,
-    CONTENT_WIDTH * 0.65,
-  ]);
+    const infraHeaders = ["Component", "Details"];
+    const infraRows: (string | number)[][] = [
+      ["Hosting", data.infrastructure.hosting],
+      ["Database", data.infrastructure.database],
+      ["Authentication", data.infrastructure.auth],
+      ["CDN", data.infrastructure.cdn],
+      ["Scaling", data.infrastructure.scaling],
+    ];
+    addTable(infraHeaders, infraRows, [
+      CONTENT_WIDTH * 0.35,
+      CONTENT_WIDTH * 0.65,
+    ]);
+  }
 
   // === ARCHITECTURE DIAGRAM SECTION ===
   if (diagramElement && data["Architecture Diagram"]) {
