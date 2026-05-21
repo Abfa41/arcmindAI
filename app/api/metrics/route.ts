@@ -8,10 +8,7 @@ export async function GET() {
     const session = await getServerSession(authOptions);
     const adminEmails = process.env.ADMIN_EMAIL?.split(",") ?? [];
 
-    if (
-      !session?.user?.email ||
-      !adminEmails.includes(session.user.email)
-    ) {
+    if (!session?.user?.email || !adminEmails.includes(session.user.email)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
