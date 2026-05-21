@@ -231,46 +231,50 @@ const generatePDF = async (options: PDFExportOptions): Promise<void> => {
     addSectionTitle("Architecture Diagram");
 
     try {
-      // Create a cloned wrapper to avoid capturing page-level styles like
-      // `backdrop-filter` or semi-transparent background utilities which can
-      // make the exported image look "see-through". We render the clone
-      // off-screen with a forced white background and then capture it.
-      const wrapper = document.createElement("div");
-      wrapper.style.position = "fixed";
-      wrapper.style.left = "-9999px";
-      wrapper.style.top = "-9999px";
-      wrapper.style.background = "#ffffff";
-      wrapper.style.padding = "0";
+      // Look for the rendered Mermaid SVG element inside the diagram element.
+      // We specifically look for an SVG with an ID starting with 'mermaid-' to avoid
+      // picking up Lucide icon SVGs or other buttons.
+      const svgElement =
+        diagramElement.querySelector("svg[id^='mermaid-']") ||
+        diagramElement.querySelector("svg");
 
-      const clone = diagramElement.cloneNode(true) as HTMLElement;
+      const targetElement = (
+        svgElement ? svgElement.parentElement || svgElement : diagramElement
+      ) as HTMLElement;
 
-      // Ensure the clone has a white background and no backdrop filter or
-      // opacity so it renders solidly in the image.
-      clone.style.background = "#ffffff";
-      clone.style.backdropFilter = "none";
-      (clone.style as any).webkitBackdropFilter = "none";
-      clone.style.opacity = "1";
+      // Get the actual computed dimensions of the SVG element as rendered on the screen
+      const rect = svgElement
+        ? svgElement.getBoundingClientRect()
+        : diagramElement.getBoundingClientRect();
+      const computedWidth = rect.width || 800;
+      const computedHeight = rect.height || 600;
 
-      // Also try to force any child elements to be opaque (helps with SVGs
-      // that inherit transparency from CSS variables/classes).
-      clone.querySelectorAll<HTMLElement>("*").forEach((el) => {
-        el.style.background = el.style.background || "transparent";
-        el.style.opacity = el.style.opacity || "1";
-      });
-
-      wrapper.appendChild(clone);
-      document.body.appendChild(wrapper);
-
-      const diagramImage = await htmlToImage.toPng(clone, {
+      // Capture the element directly (no off-screen wrapper cloning, which causes blank exports)
+      const diagramImage = await htmlToImage.toPng(targetElement, {
         backgroundColor: "#ffffff",
-        pixelRatio: 2,
+        pixelRatio: 3, // Crisp text and lines in PDF
+        width: computedWidth + 40, // Include padding (20px each side)
+        height: computedHeight + 40,
+        style: {
+          width: `${computedWidth}px`,
+          height: `${computedHeight}px`,
+          padding: "20px",
+          background: "#ffffff",
+          transform: "none",
+          transformOrigin: "top left",
+        },
       });
-
-      // cleanup the temporary wrapper
-      document.body.removeChild(wrapper);
 
       const img = new Image();
+      const imageLoaded = new Promise<void>((resolve) => {
+        img.onload = () => resolve();
+        img.onerror = () => resolve();
+      });
       img.src = diagramImage;
+      await imageLoaded;
+
+      const width = img.width || 800;
+      const height = img.height || 600;
 
       // Calculate dimensions to fit the diagram
       const maxDiagramWidth = CONTENT_WIDTH;
@@ -280,7 +284,7 @@ const generatePDF = async (options: PDFExportOptions): Promise<void> => {
       let diagramHeight = maxDiagramHeight;
 
       // Maintain aspect ratio
-      const imgAspectRatio = img.width / img.height;
+      const imgAspectRatio = width / height;
       const maxAspectRatio = maxDiagramWidth / maxDiagramHeight;
 
       if (imgAspectRatio > maxAspectRatio) {
