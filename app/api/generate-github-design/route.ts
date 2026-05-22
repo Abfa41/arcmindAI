@@ -14,18 +14,18 @@ import {
   httpRequestsTotal,
 } from "@/lib/metrics";
 
-interface GenerateGithubDesignRequest { 
+interface GenerateGithubDesignRequest {
   owner: string;
   repo: string;
   analysisData: RepositoryAnalysis;
-  branch?: string; 
+  branch?: string;
 }
 
 export async function POST(request: NextRequest) {
   const route = "/api/generate-github-design";
-  const method = "POST"; 
-  let aiRequested = false;  
-  let aiFailureRecorded = false;
+  const method = "POST";
+  let aiRequested = false;
+  const aiFailureRecorded = false;
 
   try {
     // Check authentication
@@ -87,30 +87,26 @@ export async function POST(request: NextRequest) {
     //   });
     // }
 
-   if (existingGeneration?.githubGeneration) {
-  const encoder = new TextEncoder();
-  const cachedDiagram = existingGeneration.githubGeneration;
+    if (existingGeneration?.githubGeneration) {
+      const encoder = new TextEncoder();
+      const cachedDiagram = existingGeneration.githubGeneration;
 
-  const cachedStream = new ReadableStream({
-    start(controller) {
-      controller.enqueue(
-        encoder.encode(cachedDiagram)
-      );
+      const cachedStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(cachedDiagram));
 
-      controller.close();
-    },
-  }); 
+          controller.close();
+        },
+      });
 
- return new Response(cachedStream, {
-  headers: {
-    "Content-Type":
-    "text/plain; charset=utf-8",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-  },
-});
-
-}  
+      return new Response(cachedStream, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
+    }
 
     // Format analysis data for AI
     const userMessage = formatRepositoryAnalysisForAI(
@@ -128,83 +124,78 @@ export async function POST(request: NextRequest) {
     // 🔑 Fetch user's API keys
     const userApiKeys = await getUserApiKeys(userId);
 
-    aiRequested = true; 
+    aiRequested = true;
 
     // streaming version
-     const responseStream = await streamGeminiWithFallback(
+    const responseStream = await streamGeminiWithFallback(
       messages,
-       userApiKeys.geminiApiKey 
-      );
-         let mermaidDiagram = "";
-         const encoder = new TextEncoder();
-     const readable = new ReadableStream({
-         async start(controller) {
-    try {
-      for await (const chunk of responseStream) {
-        const text =
-          chunk.content?.toString() || "";
+      userApiKeys.geminiApiKey,
+    );
+    let mermaidDiagram = "";
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of responseStream) {
+            //       const data: any = chunk;
 
-        // Store full response
-        mermaidDiagram += text;
+            // let text = "";
 
-        // Stream chunk immediately
-        controller.enqueue(
-          encoder.encode(text)
-        );
-      }
-      // Cleanup markdown formatting
-      mermaidDiagram = mermaidDiagram
-        .replace(/```mermaid\n?/g, "")
-        .replace(/```\n?/g, "")
-        .trim();
+            // if (typeof data === "string") {
+            //   text = data;
+            // } else if (data?.text) {
+            //   text =
+            //     typeof data.text === "function"
+            //       ? data.text()
+            //       : data.text;
+            // } else if (data?.content) {
+            //   if (typeof data.content === "string") {
+            //     text = data.content;
+            //   } else if (Array.isArray(data.content)) {
+            //     text = data.content
+            //       .map((item: any) => item?.text || "")
+            //       .join("");
+            //   }
+            // }
+            const text = chunk.content?.toString() || "";
 
-      // Save completed response
-      await db.generation.create({
-        data: {
-          userInput: repoIdentifier,
-          githubGeneration: mermaidDiagram,
-          userId,
-        },
-      });
+            // Store full response
+            mermaidDiagram += text;
 
-        controller.close();
-     } catch (error) {
-      console.error(
-        "Streaming error:",
-        error
-      );
+            // Stream chunk immediately
+            if (text) controller.enqueue(encoder.encode(text));
+          }
+          // Cleanup markdown formatting
+          mermaidDiagram = mermaidDiagram
+            .replace(/```mermaid\n?/g, "")
+            .replace(/```\n?/g, "")
+            .trim();
 
-      controller.error(error);
-    }
-  },
-});
-  
-return new Response(readable, {
-  headers: {
-    "Content-Type":
-    "text/plain; charset=utf-8",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-  },
-});
+          // Save completed response
+          await db.generation.create({
+            data: {
+              userInput: repoIdentifier,
+              githubGeneration: mermaidDiagram,
+              userId,
+            },
+          });
 
-    
-    // let mermaidDiagram = response.content as string;
+          controller.close();
+        } catch (error) {
+          console.error("Streaming error:", error);
 
-    // // Clean up the response - remove markdown code blocks if present
-    // mermaidDiagram = mermaidDiagram
-    //   .replace(/```mermaid\n?/g, "")
-    //   .replace(/```\n?/g, "")
-    //   .trim();
+          controller.error(error);
+        }
+      },
+    });
 
-    // // Save to database
-    // const generation = await db.generation.create({
-    //   data: {
-    //     userInput: repoIdentifier,
-    //     githubGeneration: mermaidDiagram,
-    //     userId: userId,
-    //   },
-    // });
+    return new Response(readable, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
 
     // return NextResponse.json({
     //   success: true,
@@ -212,7 +203,6 @@ return new Response(readable, {
     //   mermaidDiagram,
     //   cached: false, // Indicate this is newly generated
     // });
-
   } catch (error) {
     if (aiRequested && !aiFailureRecorded) {
       aiGenerationFailureTotal.inc();
@@ -227,7 +217,7 @@ return new Response(readable, {
             ? error.message
             : "Failed to generate system design",
       },
-      { status: 500 }
+      { status: 500 },
     );
-  }  
-}  
+  }
+}

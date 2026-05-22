@@ -9,10 +9,10 @@ import {
   aiGenerationRequestsTotal,
   aiGenerationSuccessTotal,
   aiGenerationFailureTotal,
-  aiGenerationDurationSeconds, 
+  aiGenerationDurationSeconds,
   aiGenerationOutputSizeBytes,
-  userGenerationsTotal, 
-  userLastActivityTimestamp, 
+  userGenerationsTotal,
+  userLastActivityTimestamp,
   httpRequestsTotal,
   httpRequestDurationSeconds,
   apiGatewayErrorsTotal,
@@ -22,115 +22,236 @@ import {
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+function extractTextFromChunk(
+  chunk:
+    | {
+        text?: string | (() => string);
+        content?: string | { text?: string }[];
+      }
+    | string,
+): string {
+  if (typeof chunk === "string") {
+    return chunk;
+  }
+
+  if (chunk?.text) {
+    return typeof chunk.text === "function" ? chunk.text() : chunk.text;
+  }
+
+  if (chunk?.content) {
+    if (typeof chunk.content === "string") {
+      return chunk.content;
+    }
+
+    if (Array.isArray(chunk.content)) {
+      return chunk.content
+        .map((item: { text?: string }) => item?.text || "")
+        .join("");
+    }
+  }
+
+  return "";
+}
+
+function parseAIResponse(fullResponse: string) {
+  let jsonText = fullResponse;
+
+  const jsonStartMarker = "```json";
+  const jsonStart = jsonText.indexOf(jsonStartMarker);
+
+  if (jsonStart !== -1) {
+    jsonText = jsonText.slice(jsonStart + jsonStartMarker.length);
+
+    const jsonEnd = jsonText.indexOf("```");
+
+    if (jsonEnd !== -1) {
+      jsonText = jsonText.slice(0, jsonEnd);
+    }
+  } else {
+    const firstBrace = jsonText.indexOf("{");
+
+    if (firstBrace !== -1) {
+      let braceCount = 0;
+      let lastBrace = -1;
+
+      for (let i = firstBrace; i < jsonText.length; i++) {
+        if (jsonText[i] === "{") braceCount++;
+
+        if (jsonText[i] === "}") {
+          braceCount--;
+
+          if (braceCount === 0) {
+            lastBrace = i;
+            break;
+          }
+        }
+      }
+
+      if (lastBrace !== -1) {
+        jsonText = jsonText.slice(firstBrace, lastBrace + 1);
+      }
+    }
+  }
+
+  jsonText = jsonText.trim();
+
+  if (!jsonText) {
+    throw new Error("No JSON content found in AI response.");
+  }
+
+  const parsedData = JSON.parse(jsonText);
+
+  const mermaidStartMarker = "```mermaid";
+
+  const mermaidStart = fullResponse.indexOf(mermaidStartMarker);
+
+  if (mermaidStart !== -1) {
+    let mermaidText = fullResponse.slice(
+      mermaidStart + mermaidStartMarker.length,
+    );
+
+    const mermaidEnd = mermaidText.indexOf("```");
+
+    if (mermaidEnd !== -1) {
+      mermaidText = mermaidText.slice(0, mermaidEnd);
+    }
+
+    mermaidText = mermaidText
+      .replace(/```mermaid/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    if (mermaidText) {
+      parsedData["Architecture Diagram"] = mermaidText;
+    }
+  }
+
+  return parsedData;
+}
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
+
   const route = "/api/generate";
   const method = "POST";
+
   httpRequestsTotal.inc({ route, method });
 
   try {
     const body = await req.json().catch(() => null);
+
     if (!body || !body.userInput) {
-      apiGatewayErrorsTotal.inc({ status_code: "400" });
-      httpRequestDurationSeconds.observe(
-        { route },
-        (Date.now() - startTime) / 1000,
-      );
+      apiGatewayErrorsTotal.inc({
+        status_code: "400",
+      });
+
       return NextResponse.json(
-        { error: "Invalid request body. Missing 'userInput' field." },
+        {
+          error: "Invalid request body. Missing 'userInput' field.",
+        },
         { status: 400 },
       );
     }
 
     const { userInput, userId } = body;
+    if (!userId) {
+      apiGatewayErrorsTotal.inc({
+        status_code: "400",
+      });
 
-    const dbStart = Date.now();
+      return NextResponse.json(
+        {
+          error: "Missing userId. You must be logged in to generate.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (!userInput || userInput.trim().length === 0) {
+      apiGatewayErrorsTotal.inc({
+        status_code: "400",
+      });
+
+      return NextResponse.json(
+        {
+          error: "Invalid input. Please provide a valid project idea.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const userFindStart = Date.now();
+
     const user = await db.user.findFirst({
       where: {
         id: userId,
       },
     });
+
     databaseQueryDurationSeconds.observe(
       { operation: "findFirst" },
-      (Date.now() - dbStart) / 1000,
+      (Date.now() - userFindStart) / 1000,
     );
 
     if (!user) {
-      apiGatewayErrorsTotal.inc({ status_code: "404" });
-      httpRequestDurationSeconds.observe(
-        { route },
-        (Date.now() - startTime) / 1000,
-      );
-      return NextResponse.json({ status: 404, message: "User not Found" });
-    } 
-
-    if (user?.isVerified === false) {
-      apiGatewayErrorsTotal.inc({ status_code: "401" });
-      httpRequestDurationSeconds.observe(
-        { route },
-        (Date.now() - startTime) / 1000,
-      );
-      return NextResponse.json({
-        status: 401,
-        message: "Email is not verified",
+      apiGatewayErrorsTotal.inc({
+        status_code: "404",
       });
+
+      return NextResponse.json(
+        {
+          status: 404,
+          message: "User not Found",
+        },
+        { status: 404 },
+      );
+    }
+
+    if (user.isVerified === false) {
+      apiGatewayErrorsTotal.inc({
+        status_code: "401",
+      });
+
+      return NextResponse.json(
+        {
+          status: 401,
+          message: "Email is not verified",
+        },
+        { status: 401 },
+      );
     }
 
     const generationCount = await db.generation.count({
       where: { userId },
     });
 
-    // 2. Get user limit based on plan
     const planLimits = {
       free: 10,
       pro: 200,
-      enterprise: 9999, // or unlimited
+      enterprise: 9999,
     };
 
-    const plan = user?.plan as keyof typeof planLimits | undefined;
-    const userLimit = plan ? planLimits[plan] : undefined;
+    const plan = user.plan as keyof typeof planLimits;
 
-    // 3. Enforce plan limits
+    const userLimit = planLimits[plan];
+
     if (userLimit !== undefined && generationCount >= userLimit) {
       return NextResponse.json(
         {
-          error: `You have reached your limit of ${userLimit} generations for the ${user?.plan} plan.`,
-          upgrade: user?.plan === "free" ? true : false,
+          error: `You have reached your limit of ${userLimit} generations for the ${user.plan} plan.`,
+          upgrade: user.plan === "free",
         },
         { status: 403 },
       );
     }
 
-    if (!userInput || userInput.trim().length === 0) {
-      apiGatewayErrorsTotal.inc({ status_code: "400" });
-      httpRequestDurationSeconds.observe(
-        { route },
-        (Date.now() - startTime) / 1000,
-      );
-      return NextResponse.json(
-        { error: "Invalid input. Please provide a valid project idea." },
-        { status: 400 },
-      );
-    }
+    const { success } = await generationRateLimit.limit(userId);
 
-    if (!userId) {
-      httpRequestsTotal.inc({ route, method, status_code: "400" });
-      apiGatewayErrorsTotal.inc({ status_code: "400" });
-      return NextResponse.json(
-        { error: "Missing userId. You must be logged in to generate." },
-        { status: 400 },
-      );
-    }
-
-    // Rate limiting: 1 request every 2 minutes per user
-    const { success, limit, remaining, reset } =
-      await generationRateLimit.limit(userId);
     if (!success) {
-      apiGatewayErrorsTotal.inc({ status_code: "429" });
-      httpRequestDurationSeconds.observe(
-        { route },
-        (Date.now() - startTime) / 1000,
-      );
+      apiGatewayErrorsTotal.inc({
+        status_code: "429",
+      });
+
       return NextResponse.json(
         {
           error:
@@ -140,156 +261,61 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Increment AI generation request counter
     aiGenerationRequestsTotal.inc();
 
-    // Update user activity
     userLastActivityTimestamp.set({ user_id: userId }, Date.now() / 1000);
 
-    // ✅ Construct the AI messages
     const messages = [
       new SystemMessage(SystemPrompt),
       new HumanMessage(userInput),
     ];
 
-    // 🔑 Fetch user's API keys
     const userApiKeys = await getUserApiKeys(userId);
 
-    // 🧠 Call Gemini model with streaming and automatic fallback
     const aiStart = Date.now();
-    const responseStream = await streamGeminiWithFallback(
+
+    const stream = await streamGeminiWithFallback(
       messages,
       userApiKeys.geminiApiKey,
     );
 
     const encoder = new TextEncoder();
+
     let fullResponse = "";
-    let mermaidDiagram = "";
-    let parsedData: any = null;
 
     const readable = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of responseStream) {
+          for await (const chunk of stream) {
+            const text = extractTextFromChunk(chunk);
 
-           console.log("STREAM CHUNK:", chunk);
+            if (!text) continue;
 
-               let text = "";
-
-  if (typeof chunk === "string") {
-    text = chunk;
-  } else if (typeof chunk.content === "string") {
-    text = chunk.content;
-  } else if (Array.isArray(chunk.content)) {
-    text = chunk.content
-      .map((item: any) => {
-        if (typeof item === "string") return item;
-        if (item?.text) return item.text;
-        return ""; 
-      })
-      .join("");
-  } else if (chunk.content) {
-    text = JSON.stringify(chunk.content);
-  }
-
-  console.log("TEXT:", text);
-
-
-            // Accumulate full response
             fullResponse += text;
 
-            // Stream chunk immediately to client for real-time progress
-            if (text) {
-            const data = JSON.stringify({ chunk: text });
-            controller.enqueue(encoder.encode(`data: ${data}\n\n`)
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  chunk: text,
+                })}\n\n`,
+              ),
             );
-          } 
           }
+
           const aiDuration = (Date.now() - aiStart) / 1000;
+
           aiGenerationDurationSeconds.observe(aiDuration);
 
-          // After streaming completes, process the full response
-          if (!fullResponse) {
+          if (!fullResponse.trim()) {
             aiGenerationFailureTotal.inc();
+
             throw new Error("Empty AI response received.");
           }
 
-          // 🧹 Clean up the AI output and extract JSON
-          let jsonText = fullResponse;
+          const parsedData = parseAIResponse(fullResponse);
 
-          // Find the start of JSON code block
-          const jsonStartMarker = "```json";
-          const jsonStart = jsonText.indexOf(jsonStartMarker);
+          const createStart = Date.now();
 
-          if (jsonStart !== -1) {
-            // Extract from after the ```json marker
-            jsonText = jsonText.slice(jsonStart + jsonStartMarker.length);
-
-            // Find the first closing ``` after the JSON start
-            const jsonEnd = jsonText.indexOf("```");
-            if (jsonEnd !== -1) {
-              jsonText = jsonText.slice(0, jsonEnd);
-            }
-          } else {
-            // If no ```json marker, try to find JSON object directly
-            const firstBrace = jsonText.indexOf("{");
-            if (firstBrace !== -1) {
-              // Find matching closing brace
-              let braceCount = 0;
-              let lastBrace = -1;
-              for (let i = firstBrace; i < jsonText.length; i++) {
-                if (jsonText[i] === "{") braceCount++;
-                if (jsonText[i] === "}") {
-                  braceCount--;
-                  if (braceCount === 0) {
-                    lastBrace = i;
-                    break;
-                  }
-                }
-              }
-              if (lastBrace !== -1) {
-                jsonText = jsonText.slice(firstBrace, lastBrace + 1);
-              }
-            }
-          }
-
-          jsonText = jsonText.trim();
-
-          if (!jsonText) throw new Error("No JSON content found in AI response.");
-          console.log("Parsed JSON text length:", jsonText.length);
-
-          parsedData = JSON.parse(jsonText);
-
-          // 🎨 Extract mermaid diagram if present
-          const mermaidStartMarker = "```mermaid";
-          const mermaidStart = fullResponse.indexOf(mermaidStartMarker);
-
-          if (mermaidStart !== -1) {
-            // Extract from after the ```mermaid marker
-            let mermaidText = fullResponse.slice(
-              mermaidStart + mermaidStartMarker.length,
-            );
-
-            // Find the first closing ``` after the mermaid start
-            const mermaidEnd = mermaidText.indexOf("```");
-            if (mermaidEnd !== -1) {
-              mermaidText = mermaidText.slice(0, mermaidEnd);
-            }
-
-            // Clean up the mermaid diagram
-            mermaidText = mermaidText
-              .replace(/```mermaid/g, "")
-              .replace(/```/g, "")
-              .trim();
-
-            // Add to parsedData
-            if (mermaidText) {
-              parsedData["Architecture Diagram"] = mermaidText;
-            }
-          }
-
-          // 💾 Save generation result in DB with timing
-          const dbStart = Date.now();
           await db.generation.create({
             data: {
               userInput,
@@ -297,33 +323,52 @@ export async function POST(req: NextRequest) {
               userId,
             },
           });
+
           databaseQueryDurationSeconds.observe(
             { operation: "create" },
-            (Date.now() - dbStart) / 1000,
+            (Date.now() - createStart) / 1000,
           );
 
-          // Increment success counters
           aiGenerationSuccessTotal.inc();
-          userGenerationsTotal.inc({ user_id: userId });
 
-          // Update user activity
+          userGenerationsTotal.inc({
+            user_id: userId,
+          });
+
           userLastActivityTimestamp.set({ user_id: userId }, Date.now() / 1000);
 
-          // Set output size
           aiGenerationOutputSizeBytes.set(JSON.stringify(parsedData).length);
 
-          // Track total HTTP duration
           httpRequestDurationSeconds.observe(
             { route },
             (Date.now() - startTime) / 1000,
           );
 
-          console.log("Generation completed successfully");
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                done: true,
+                parsedData,
+              })}\n\n`,
+            ),
+          );
+
           controller.close();
         } catch (error: unknown) {
           console.error("Streaming error:", error);
+
           aiGenerationFailureTotal.inc();
-          controller.error(error);
+
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                error:
+                  error instanceof Error ? error.message : "Streaming failed",
+              })}\n\n`,
+            ),
+          );
+
+          controller.close();
         }
       },
     });
@@ -337,14 +382,14 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: unknown) {
     aiGenerationFailureTotal.inc();
+
     console.error("Error in generation request:", error);
 
-    // Handle specific Prisma or AI-related errors
     let status = 500;
+
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error";
 
-    // Check if all API keys failed (trigger user to add their own keys)
     const isApiKeyError =
       errorMessage.toLowerCase().includes("api key") ||
       errorMessage.toLowerCase().includes("rate limit") ||
@@ -360,12 +405,15 @@ export async function POST(req: NextRequest) {
     ) {
       status = 409;
     } else if (isApiKeyError) {
-      status = 503; // Service Unavailable - signals client to show API key dialog
+      status = 503;
     } else if (errorMessage.includes("AI")) {
       status = 502;
     }
 
-    apiGatewayErrorsTotal.inc({ status_code: status.toString() });
+    apiGatewayErrorsTotal.inc({
+      status_code: status.toString(),
+    });
+
     httpRequestDurationSeconds.observe(
       { route },
       (Date.now() - startTime) / 1000,
@@ -378,7 +426,6 @@ export async function POST(req: NextRequest) {
           "An unexpected server error occurred while generating the response.",
       },
       { status },
-    );  
+    );
   }
 }
-   

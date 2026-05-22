@@ -3,10 +3,10 @@
 import animationData from "@/components/loaderLottie.json";
 import { StarterTemplates } from "@/components/prompt";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent,  CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useState, useRef, useEffect } from "react";
-import { useForm } from "react-hook-form"; 
+import { useForm } from "react-hook-form";
 import { ArchitectureData } from "../utils/types";
 
 import { useHistory } from "@/lib/contexts/HistoryContext";
@@ -27,24 +27,26 @@ import MicroservicesSection from "./MicroservicesSection";
 
 export default function GeneratePage() {
   const { refetch } = useHistory();
-  const { 
+  const {
     generate,
     isLoading,
-    error: generateError, 
+    error: generateError,
   } = useGenerateSystem(refetch);
+
   const { register, watch, setValue } = useForm();
   const [generatedData, setGeneratedData] = useState<ArchitectureData | null>(
     null,
   );
   const [streamingProgress, setStreamingProgress] = useState<string>("");
-  const [isStreaming, setIsStreaming] = useState(false);  
+  const [isStreaming, setIsStreaming] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const submittedTextRef = useRef<string>(""); 
+  const submittedTextRef = useRef<string>("");
 
   const userInput = watch("userInput", "");
 
-   const cleanInput = (input: string) => { 
-  return input
+  const cleanInput = (input: string) => {
+    return (
+      input
         // Remove code block markers if present (for backward compatibility)
         .replace(/^```mermaid\n?/g, "")
         .replace(/\n?```$/g, "")
@@ -55,6 +57,7 @@ export default function GeneratePage() {
         .replace(/\\"/g, '"')
         .replace(/\\'/g, "'")
         .trim()
+    );
   };
 
   // Auto-expand textarea height
@@ -68,7 +71,7 @@ export default function GeneratePage() {
 
   const showError = !!generateError && userInput === submittedTextRef.current;
 
-  const registerField = register("userInput"); 
+  const registerField = register("userInput");
 
   const handleRef = (el: HTMLTextAreaElement | null) => {
     textareaRef.current = el;
@@ -96,96 +99,99 @@ export default function GeneratePage() {
     setStreamingProgress("");
     setIsStreaming(true);
 
-    const result = await generate(userInput, (chunk: string) => {
-      // Update streaming progress in real-time
-      setStreamingProgress((prev) => prev + chunk);
-    });  
+    try {
+      const result = await generate(userInput, (chunk: string) => {
+        // Update streaming progress in real-time
+        setStreamingProgress((prev) => prev + chunk);
+      });
 
-    // 👇 ADD THESE DEBUG LOGS RIGHT HERE 
-          console.log("FULL RESULT:", result);
-          console.log("output:", result?.output);
-          console.log("length:", result?.output?.length ?? 0);
-    submittedTextRef.current = userInput;
-  
-    if (result && result.success) {
-      setIsStreaming(false); 
-      try {
-        let cleanedOutput = result.output;
-        const jsonStartMarker = "```json";
-        const jsonStart = cleanedOutput.indexOf(jsonStartMarker);
+      // 👇 ADD THESE DEBUG LOGS RIGHT HERE
+      console.log("FULL RESULT:", result);
+      console.log("output:", result?.output);
+      console.log("length:", result?.output?.length ?? 0);
+      submittedTextRef.current = userInput;
 
-        if (jsonStart !== -1) {
-          cleanedOutput = cleanedOutput.slice(
-            jsonStart + jsonStartMarker.length,
-          );
-          const jsonEnd = cleanedOutput.indexOf("```");
-          if (jsonEnd !== -1) {
-            cleanedOutput = cleanedOutput.slice(0, jsonEnd);
-          }
-        } else {
-          const firstBrace = cleanedOutput.indexOf("{");
-          if (firstBrace !== -1) {
-            let braceCount = 0;
-            let lastBrace = -1;
-            for (let i = firstBrace; i < cleanedOutput.length; i++) {
-              if (cleanedOutput[i] === "{") braceCount++;
-              if (cleanedOutput[i] === "}") {
-                braceCount--;
-                if (braceCount === 0) {
-                  lastBrace = i;
-                  break;
+      if (result && result.success) {
+        try {
+          let cleanedOutput = result.output;
+          const jsonStartMarker = "```json";
+          const jsonStart = cleanedOutput.indexOf(jsonStartMarker);
+
+          if (jsonStart !== -1) {
+            cleanedOutput = cleanedOutput.slice(
+              jsonStart + jsonStartMarker.length,
+            );
+            const jsonEnd = cleanedOutput.indexOf("```");
+            if (jsonEnd !== -1) {
+              cleanedOutput = cleanedOutput.slice(0, jsonEnd);
+            }
+          } else {
+            const firstBrace = cleanedOutput.indexOf("{");
+            if (firstBrace !== -1) {
+              let braceCount = 0;
+              let lastBrace = -1;
+              for (let i = firstBrace; i < cleanedOutput.length; i++) {
+                if (cleanedOutput[i] === "{") braceCount++;
+                if (cleanedOutput[i] === "}") {
+                  braceCount--;
+                  if (braceCount === 0) {
+                    lastBrace = i;
+                    break;
+                  }
                 }
               }
+              if (lastBrace !== -1) {
+                cleanedOutput = cleanedOutput.slice(firstBrace, lastBrace + 1);
+              }
             }
-            if (lastBrace !== -1) {
-              cleanedOutput = cleanedOutput.slice(firstBrace, lastBrace + 1);
+          }
+          cleanedOutput = cleanedOutput.trim();
+
+          if (!cleanedOutput) {
+            throw new Error("No JSON content found in AI response.");
+          }
+
+          // const parsedData: ArchitectureData = JSON.parse(cleanedOutput);
+          // setGeneratedData(parsedData);
+          console.log("FINAL OUTPUT:", cleanedOutput);
+
+          const parsedData: ArchitectureData = JSON.parse(cleanedOutput);
+
+          console.log("PARSED DATA:", parsedData);
+
+          setGeneratedData(parsedData);
+          const mermaidStartMarker = "```mermaid";
+          const mermaidStart = result.output.indexOf(mermaidStartMarker);
+
+          if (mermaidStart !== -1) {
+            let mermaidText = result.output.slice(
+              mermaidStart + mermaidStartMarker.length,
+            );
+            const mermaidEnd = mermaidText.indexOf("```");
+            if (mermaidEnd !== -1) {
+              mermaidText = mermaidText.slice(0, mermaidEnd);
+            }
+            mermaidText = mermaidText
+              .replace(/```mermaid/g, "")
+              .replace(/```/g, "")
+              .trim();
+            if (mermaidText) {
+              parsedData["Architecture Diagram"] = mermaidText;
             }
           }
+
+          setGeneratedData(parsedData);
+        } catch (parseError) {
+          console.error("Failed to parse generated data:", parseError);
+          setGeneratedData(null);
         }
-
-        cleanedOutput = cleanedOutput.trim();
-
-        if (!cleanedOutput) {
-          throw new Error("No JSON content found in AI response.");
-        }
-
-        // const parsedData: ArchitectureData = JSON.parse(cleanedOutput);
-        // setGeneratedData(parsedData);
-        console.log("FINAL OUTPUT:", cleanedOutput);
-
-        const parsedData: ArchitectureData = JSON.parse(cleanedOutput);
-
-        console.log("PARSED DATA:", parsedData);
-
-        setGeneratedData(parsedData); 
-        const mermaidStartMarker = "```mermaid";
-        const mermaidStart = result.output.indexOf(mermaidStartMarker);
-
-        if (mermaidStart !== -1) {
-          let mermaidText = result.output.slice(
-            mermaidStart + mermaidStartMarker.length,
-          );
-          const mermaidEnd = mermaidText.indexOf("```");
-          if (mermaidEnd !== -1) {
-            mermaidText = mermaidText.slice(0, mermaidEnd);
-          }
-          mermaidText = mermaidText
-            .replace(/```mermaid/g, "")
-            .replace(/```/g, "")
-            .trim();
-          if (mermaidText) {
-            parsedData["Architecture Diagram"] = mermaidText;
-          }
-        }
-
-        setGeneratedData(parsedData);
-      } catch (parseError) {
-        console.error("Failed to parse generated data:", parseError);
+      } else {
+        setIsStreaming(false);
         setGeneratedData(null);
-      }  
-    } else { 
-      setGeneratedData(null);
-    } 
+      }
+    } finally {
+      setIsStreaming(false);
+    }
   };
 
   const counterColor =
@@ -193,7 +199,7 @@ export default function GeneratePage() {
       ? "text-destructive font-bold"
       : userInput.length >= 1800
         ? "text-amber-500 font-medium"
-        : "text-muted-foreground/60"; 
+        : "text-muted-foreground/60";
 
   return (
     <div className="container max-w-5xl mx-auto p-8 space-y-12">
@@ -244,7 +250,7 @@ export default function GeneratePage() {
                         </>
                       )}
                     </Button>
-                  </div> 
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -288,13 +294,14 @@ export default function GeneratePage() {
               <span className="animate-pulse">▌</span>
             </div>
             <p className="mt-2 text-xs text-blue-700">
-              Streaming response in real-time... {streamingProgress.length} characters received
+              Streaming response in real-time... {streamingProgress.length}{" "}
+              characters received
             </p>
           </CardContent>
         </Card>
       )}
 
-      {isLoading && (
+      {isLoading && !streamingProgress && (
         <div className="flex flex-col justify-center items-center min-h-[400px] space-y-8 animate-in fade-in duration-500">
           <div className="relative">
             <div className="absolute inset-0 bg-primary/5 blur-3xl rounded-full scale-150 animate-pulse"></div>
@@ -337,10 +344,6 @@ export default function GeneratePage() {
           </div>
         </div>
       )}
-        </div>
-  
-    );
-
+    </div>
+  );
 }
-
-

@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useSession } from "next-auth/react";
 import axios from "axios";
 import { DOC_ROUTES } from "@/lib/routes";
-
+import { ArchitectureData } from "../utils/types";
 
 interface GenerateResponse {
   success: boolean;
-  output: string; 
+  output: string;
 }
 
 export function useGenerateSystem(refetchHistory?: () => Promise<void>) {
@@ -30,6 +30,7 @@ export function useGenerateSystem(refetchHistory?: () => Promise<void>) {
     try {
       const response = await fetch(DOC_ROUTES.API.GENERATE.ROOT, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
@@ -57,7 +58,7 @@ export function useGenerateSystem(refetchHistory?: () => Promise<void>) {
       let output = "";
       let buffer = "";
 
-      while (true) { 
+      while (true) {
         const { done, value } = await reader.read();
 
         if (done) break;
@@ -71,7 +72,7 @@ export function useGenerateSystem(refetchHistory?: () => Promise<void>) {
         for (const part of parts) {
           if (part.startsWith("data: ")) {
             const dataStr = part.slice(6);
-           if (!dataStr || dataStr === "[DONE]") continue;
+            if (!dataStr || dataStr === "[DONE]") continue;
             try {
               const parsed = JSON.parse(dataStr);
               if (parsed && typeof parsed.chunk === "string") {
@@ -88,36 +89,42 @@ export function useGenerateSystem(refetchHistory?: () => Promise<void>) {
       /* FINAL BUFFER HANDLING */
 
       if (buffer.startsWith("data: ")) {
-  const dataStr = buffer.slice(6);
+        const dataStr = buffer.slice(6);
 
-  if (dataStr !== "[DONE]") {
-    try {
-      const parsed = JSON.parse(dataStr);
+        if (dataStr !== "[DONE]") {
+          try {
+            const parsed = JSON.parse(dataStr);
 
-      if (parsed && typeof parsed.chunk === "string") {
-        output += parsed.chunk;
-        onChunk?.(parsed.chunk); 
+            if (parsed && typeof parsed.chunk === "string") {
+              output += parsed.chunk;
+              onChunk?.(parsed.chunk);
+            }
+          } catch (error) {
+            console.error("Failed to parse final SSE chunk:", dataStr);
+          }
+        }
       }
-    } catch (error) {
-      console.error("Failed to parse final SSE chunk:", dataStr);
-    }
-  }
-}
 
-     reader.releaseLock(); 
+      reader.releaseLock();
 
-     console.log("FINAL OUTPUT:", output);
+      console.log("FINAL OUTPUT:", output);
+      console.log("BUFFER REMAINING:", buffer);
+      console.log("RESPONSE STATUS:", response.status);
+      console.log(
+        "RESPONSE HEADERS:",
+        Object.fromEntries(response.headers.entries()),
+      );
 
-    if (!output?.trim()) {
-  throw new Error(
-    "Empty AI response. Possible causes: unauthorized request (401), middleware block, or backend failure."
-  );
-}
+      if (!output?.trim()) {
+        throw new Error(
+          "Empty AI response. Possible causes: unauthorized request (401), middleware block, or backend failure.",
+        );
+      }
 
       const data: GenerateResponse = {
         success: true,
         output,
-      }; 
+      };
 
       // Refetch history after successful generation
       if (data.success && refetchHistory) {
@@ -140,7 +147,7 @@ export function useGenerateSystem(refetchHistory?: () => Promise<void>) {
       setIsLoading(false);
     }
   };
- 
+
   return {
     generate,
     isLoading,

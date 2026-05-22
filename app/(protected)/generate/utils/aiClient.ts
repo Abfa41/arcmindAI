@@ -8,14 +8,14 @@ const geminiLLM = new ChatGoogleGenerativeAI({
   model: "gemini-2.5-flash-lite",
   temperature: 0.7,
   apiKey: process.env.GEMINI_API_KEY,
-   streaming: true, 
+  streaming: true,
 });
 
 const geminiLLM_2 = new ChatGoogleGenerativeAI({
   model: "gemini-2.5-flash-lite",
   temperature: 0.7,
   apiKey: process.env.GEMINI_API_KEY_UNSECURED,
-    streaming: true,
+  streaming: true,
 });
 
 /**
@@ -26,7 +26,7 @@ function createGeminiClient(apiKey: string): ChatGoogleGenerativeAI {
     model: "gemini-2.5-flash-lite",
     temperature: 0.7,
     apiKey,
-     streaming: true,
+    streaming: true,
   });
 }
 
@@ -97,8 +97,6 @@ export async function invokeGeminiWithFallback(
   let usedUserKey = false;
   let allKeysFailed = false;
 
-  
-
   // Tier 1: Try user's personal API key first (if provided)
   if (userApiKey) {
     try {
@@ -115,7 +113,6 @@ export async function invokeGeminiWithFallback(
       // Continue to system keys
     }
   }
-
 
   // Tier 2: Try primary system API key
   try {
@@ -152,24 +149,20 @@ export async function invokeGeminiWithFallback(
   }
 }
 
- // streaming version of the above function
+// streaming version of the above function
 
 export async function streamGeminiWithFallback(
   messages: BaseMessage[],
-  userApiKey?: string, 
+  userApiKey?: string,
 ) {
-
-   // Tier 1: User API key
+  // Tier 1: User API key
   if (userApiKey) {
     try {
-      console.log(
-        "Attempting Gemini streaming with user's personal API key"
-      );
+      console.log("Attempting Gemini streaming with user's personal API key");
 
       const userClient = createGeminiClient(userApiKey);
 
       return await userClient.stream(messages);
-
     } catch (error) {
       console.warn(
         "User Gemini streaming failed, falling back to system key:",
@@ -180,31 +173,21 @@ export async function streamGeminiWithFallback(
 
   // Tier 2: Primary system key
   try {
-    console.log(
-      "Attempting Gemini streaming with primary system API key"
-    );
+    console.log("Attempting Gemini streaming with primary system API key");
 
     return await geminiLLM.stream(messages);
-
   } catch (error) {
     if (shouldFallback(error)) {
-      console.warn(
-        "Primary streaming key failed, trying fallback key:",
-        error,
-      );
+      console.warn("Primary streaming key failed, trying fallback key:", error);
 
       // Tier 3: Secondary system key
       try {
         return await geminiLLM_2.stream(messages);
-
       } catch (fallbackError) {
-        console.error(
-          "All Gemini streaming API keys failed:",
-          {
-            primary: error,
-            fallback: fallbackError,
-          }
-        );
+        console.error("All Gemini streaming API keys failed:", {
+          primary: error,
+          fallback: fallbackError,
+        });
 
         throw fallbackError;
       }
