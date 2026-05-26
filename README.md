@@ -164,6 +164,11 @@ Required environment variables:
 ```bash
 pnpm prisma generate
 pnpm prisma db push
+```
+
+5. Run the development server:
+
+```bash
 pnpm dev
 ```
 
