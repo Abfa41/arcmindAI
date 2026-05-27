@@ -27,9 +27,15 @@ export async function sendWebhook({ userId, event, data }: SendWebhookPayload) {
 
     // Send to each webhook
     for (const webhook of webhooks) {
+      const isSuccess = event === "generation.success";
+      const safeData = (data as Record<string, unknown>) || {};
+
       const payload: Prisma.InputJsonValue = {
         event,
         timestamp: new Date().toISOString(),
+        content: isSuccess
+          ? `✅ archmindAI: System generation successful for "${safeData.userInput || safeData.repository || "N/A"}"`
+          : `❌ archmindAI: System generation failed: ${safeData.error || "Unknown error"}`,
         data,
       };
 
