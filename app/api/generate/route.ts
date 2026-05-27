@@ -399,7 +399,7 @@ export async function POST(req: NextRequest) {
           await sendWebhook({
             userId,
             event: "generation.success",
-           // @ts-expect-error Prisma JSON value
+            // @ts-expect-error Prisma JSON value
             data: {
               userInput,
               generatedOutput: parsedData,
