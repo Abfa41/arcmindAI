@@ -44,10 +44,6 @@ export default function GenerateLayout({
     return null;
   }
 
-  if (!session && isGuestAllowedRoute) {
-    return <>{children}</>;
-  }
-
   // Generate breadcrumbs based on current path and sidebar data
   const generateBreadcrumbs = () => {
     const pathSegments = pathname.split("/").filter(Boolean);

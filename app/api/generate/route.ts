@@ -325,15 +325,23 @@ export async function POST(req: NextRequest) {
     let remaining: number | null = null;
     let reset: number | null = null;
 
-    if (!hasOwnApiKey && !isGuest) {
-      const rateLimiter =
-        userPlan === "enterprise"
+    if (!hasOwnApiKey) {
+      const rateLimiter = isGuest
+        ? generationRateLimits.guest
+        : userPlan === "enterprise"
           ? generationRateLimits.enterprise
           : userPlan === "pro"
             ? generationRateLimits.pro
             : generationRateLimits.free;
 
-      const result = await rateLimiter.limit(userId as string);
+      const forwardedFor = req.headers.get("x-forwarded-for");
+      const realIp = req.headers.get("x-real-ip");
+      const extractedIp =
+        (forwardedFor ? forwardedFor.split(",")[0].trim() : realIp) || "guest";
+
+      const limitKey = isGuest ? `guest_${extractedIp}` : (userId as string);
+
+      const result = await rateLimiter.limit(limitKey);
 
       const { success } = result;
 
@@ -351,8 +359,9 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json(
           {
-            error:
-              userPlan === "free"
+            error: isGuest
+              ? "Guest users can generate 1 architecture per day."
+              : userPlan === "free"
                 ? "Free users can generate 5 architectures per hour."
                 : "Rate limit exceeded. Please try again later.",
             retryAfter: new Date(reset).toISOString(),
