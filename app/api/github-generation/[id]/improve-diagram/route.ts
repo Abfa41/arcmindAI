@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
   const method = "POST";
 
   const session = await getServerSession(authOptions);
+  // @ts-expect-error id is added to the session in the session callback
   if (!session?.user?.id) {
     httpRequestsTotal.inc({ route, method, status_code: "401" });
     return NextResponse.json(
