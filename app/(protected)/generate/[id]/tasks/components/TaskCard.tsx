@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, AlertCircle, Copy } from "lucide-react";
+import { Clock, AlertCircle, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Task {
@@ -19,6 +20,7 @@ interface TaskCardProps {
 }
 
 export default function TaskCard({ task, allTasks }: TaskCardProps) {
+  const [copied, setCopied] = useState(false);
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "high":
@@ -67,6 +69,12 @@ export default function TaskCard({ task, allTasks }: TaskCardProps) {
     await navigator.clipboard.writeText(
       `[${priority}] ${task.title}: ${task.description}`,
     );
+
+    setCopied(true);
+
+    setTimeout(() => {
+      setCopied(false);
+    }, 1500);
   };
 
   return (
@@ -95,11 +103,15 @@ export default function TaskCard({ task, allTasks }: TaskCardProps) {
             variant="ghost"
             size="icon"
             onClick={handleCopyTask}
-            aria-label={`Copy task ${task.title}`}
-            title="Copy task"
+            aria-label={copied ? "Task copied" : `Copy task ${task.title}`}
+            title={copied ? "Copied" : "Copy task"}
             className="h-8 w-8 shrink-0"
           >
-            <Copy className="h-4 w-4" />
+            {copied ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
           </Button>
 
           <div className="flex items-center gap-1 text-sm text-muted-foreground shrink-0">
