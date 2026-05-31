@@ -4,8 +4,6 @@ import { useParams, useRouter } from "next/navigation";
 import { useFrontendStructure } from "@/hooks/useFrontendStructure";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   CheckCircle,
