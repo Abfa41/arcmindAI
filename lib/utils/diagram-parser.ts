@@ -54,7 +54,6 @@ export function parseMermaidToJSON(mermaidCode: string): SystemGraph {
     );
     if (nodeMatch) {
       const [
-        full,
         id,
         rectLabel,
         diamondLabel,
@@ -106,7 +105,7 @@ export function parseMermaidToJSON(mermaidCode: string): SystemGraph {
       /([\w-]+)\s*(?:(?:--|-\.-|==)\s*"(.+?)"\s*(?:-->|-\.->|==>)|(?:-->|-\.->|==>)\|"(.+?)"\||(-->|-\.->|==>))\s*([\w-]+)/,
     );
     if (linkMatch) {
-      const [full, source, label1, label2, linkType, target] = linkMatch;
+      const [full, source, label1, label2, target] = linkMatch;
       let type: "sync" | "async" | "fallback" = "sync";
       if (full.includes("-.-")) type = "async";
       if (full.includes("==")) type = "fallback";
